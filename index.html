@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>航海争夺 · 人机对战（地图 C）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, 'Microsoft YaHei', sans-serif;
+    background: radial-gradient(circle at 50% 0%, #24384d 0%, #16222e 60%, #101a24 100%);
+    color: #eaf2f8; min-height: 100vh; padding: 10px 12px 24px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 1.7rem; margin: 6px 0 2px; letter-spacing: 2px; text-shadow: 0 0 10px rgba(255,215,0,.55); }
+  .subtitle { font-size: .82rem; color: #9fb4c7; margin-bottom: 12px; }
+
+  /* ---------------- 开局界面 ---------------- */
+  #setup { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: #223549; border: 1px solid #31506b; border-radius: 14px; padding: 16px 18px; box-shadow: 0 8px 22px rgba(0,0,0,.45); }
+  .card h2 { font-size: 1rem; color: #ffd700; margin-bottom: 10px; font-weight: 700; }
+  .seat-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .seat-opt {
+    flex: 1 1 220px; cursor: pointer; border: 2px solid #3c5c78; border-radius: 12px;
+    padding: 14px 16px; background: #1b2b3b; transition: all .15s; user-select: none;
+  }
+  .seat-opt:hover { border-color: #6f9dc4; transform: translateY(-2px); }
+  .seat-opt.sel { border-color: #ffd700; background: #2b3f52; box-shadow: 0 0 0 3px rgba(255,215,0,.18) inset; }
+  .seat-opt .t { font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; }
+  .seat-opt .d { font-size: .78rem; color: #9fb4c7; line-height: 1.5; }
+  .mapbox { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .mapgrid { display: grid; grid-template-columns: repeat(5, 22px); gap: 3px; }
+  .mapgrid div { width: 22px; height: 22px; border-radius: 3px; background: #4a6a8a; }
+  .mapgrid div.off { background: transparent; }
+  .maptip { font-size: .78rem; color: #9fb4c7; line-height: 1.7; }
+  .btn {
+    padding: 10px 18px; border: none; border-radius: 8px; background: #f0ad4e; color: #221a08;
+    font-weight: 700; font-size: .95rem; cursor: pointer; transition: all .15s; font-family: inherit;
+  }
+  .btn:hover:not(:disabled) { background: #ffc46b; transform: translateY(-1px); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.ghost { background: #2f4a63; color: #dbe9f5; }
+  .btn.ghost:hover { background: #3c5c78; }
+  .btn.sm { padding: 6px 12px; font-size: .84rem; }
+  .row-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  /* ---------------- 对局界面 ---------------- */
+  #game { width: 100%; max-width: 980px; display: none; flex-direction: column; gap: 10px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+            background: #223549; border: 1px solid #31506b; border-radius: 12px; padding: 8px 14px; font-size: .84rem; }
+  .topbar .stat { color: #9fb4c7; }
+  .topbar .stat b { color: #ffd700; }
+
+  .prompt-area {
+    background: #223549; border: 1px solid #31506b; border-radius: 12px;
+    padding: 12px 16px; min-height: 86px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; text-align: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4);
+  }
+  .prompt-area .tile-line { font-size: 1rem; }
+  .prompt-area .tile-emoji { font-size: 2rem; vertical-align: middle; }
+  .prompt-area .buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .ai-line { font-size: 1rem; font-weight: 700; color: #8fd4ff; }
+  .ai-line .k { color: #ffd700; }
+  .ai-meta { font-size: .74rem; color: #7f97ab; font-variant-numeric: tabular-nums; }
+  .thinking::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
+  @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+  .boards { display: flex; gap: 10px; justify-content: center; width: 100%; }
+  .player { flex: 1 1 0; min-width: 0; padding: 10px; border-radius: 12px; position: relative;
+            box-shadow: 0 6px 16px rgba(0,0,0,.5); border: 2px solid transparent; transition: border-color .2s; }
+  #player0 { background: #4d2a2a; }
+  #player1 { background: #26374f; }
+  .player.active { border-color: #ffd700; }
+  .player.you .player-name { color: #9cf5b0; }
+  .player.ai .player-name { color: #8fd4ff; }
+  .player-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px; }
+  .player-name { font-size: 1rem; font-weight: 700; white-space: nowrap; }
+  .score { font-size: 1.3rem; font-weight: 800; color: #ffd700; font-variant-numeric: tabular-nums; }
+  .treasure { font-size: .95rem; color: #ffa500; min-width: 1.6em; text-align: right; }
+  .reward-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 3px; }
+  .reward-icon { text-align: center; font-size: .82rem; color: #9fb4c7; }
+  .map-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; background: #16222e; padding: 5px; border-radius: 8px; }
+  .cell {
+    width: 100%; aspect-ratio: 1; background: #3a4a5a; border-radius: 5px; display: flex;
+    align-items: center; justify-content: center; font-size: 1.15rem; position: relative;
+    border: 2px solid transparent; transition: all .12s;
+  }
+  .cell.hidden-cell { visibility: hidden; }
+  .cell.filled { background: #2f4055; }
+  .cell.col-done::after {
+    content: '✓'; position: absolute; right: 2px; top: 0px; font-size: .6rem; color: #7fe08a;
+  }
+  .cell.placeable { border-color: #ffd700; background: #4d6382; cursor: pointer; }
+  .cell.placeable:hover { background: #61799b; transform: scale(1.06); }
+  .cell.selectable { border-color: #ff6b6b; cursor: pointer; }
+  .cell.selectable:hover { background: #7a5348; transform: scale(1.06); }
+  .cell.just { box-shadow: 0 0 0 3px rgba(255,215,0,.75); }
+  .cell.monkey { animation: shake .5s; }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+  .logwrap { background: #16222e; border: 1px solid #2b455c; border-radius: 12px; padding: 8px 12px; }
+  .logwrap h3 { font-size: .78rem; color: #7f97ab; font-weight: 600; margin-bottom: 6px; }
+  #log { height: 132px; overflow-y: auto; font-size: .82rem; line-height: 1.72; }
+  #log .e { display: flex; gap: 8px; }
+  #log .e .who { flex: 0 0 4.6em; color: #7f97ab; text-align: right; }
+  #log .e.you .who { color: #9cf5b0; }
+  #log .e.ai .who { color: #8fd4ff; }
+  #log .e.sys .txt { color: #b9c9d6; }
+  #log .e.big .txt { color: #ffd700; font-weight: 700; }
+  #log .e.warn .txt { color: #ff9c9c; }
+  .footer { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .78rem; color: #7f97ab; }
+
+  /* ---------------- 弹窗 ---------------- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(6,12,18,.78); display: none;
+    align-items: center; justify-content: center; padding: 18px; z-index: 50;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    background: #1d2f41; border: 1px solid #3c5c78; border-radius: 14px; max-width: 760px;
+    width: 100%; max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.6);
+  }
+  .modal header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #2b455c; }
+  .modal header h2 { font-size: 1.05rem; color: #ffd700; }
+  .modal .body { padding: 14px 20px 20px; overflow-y: auto; font-size: .87rem; line-height: 1.8; }
+  .modal .body h3 { font-size: .95rem; color: #ffd700; margin: 16px 0 6px; }
+  .modal .body h3:first-child { margin-top: 2px; }
+  .modal .body p { margin: 4px 0; color: #d7e5f0; }
+  .modal .body ul { margin: 4px 0 4px 20px; color: #d7e5f0; }
+  .modal .body li { margin: 2px 0; }
+  .modal .body table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: .82rem; }
+  .modal .body th, .modal .body td { border: 1px solid #33506a; padding: 5px 8px; text-align: left; }
+  .modal .body th { background: #223549; color: #ffd700; font-weight: 600; }
+  .modal .body code { background: #16222e; padding: 1px 5px; border-radius: 4px; color: #ffd9a0; }
+  .modal .body .note { color: #9fb4c7; font-size: .8rem; }
+  .x { background: none; border: none; color: #9fb4c7; font-size: 1.4rem; cursor: pointer; line-height: 1; padding: 2px 6px; }
+  .x:hover { color: #fff; }
+  .tag { display: inline-block; background: #2b455c; border-radius: 4px; padding: 0 5px; font-size: .78rem; color: #cfe2f0; }
+</style>
+</head>
+<body>
+<h1>⚓ 航海争夺 ⚓</h1>
+<div class="subtitle">人机对战 · 地图 C · 纯本地运行（不联网、无服务器）</div>
+
+<!-- ==================== 开局界面 ==================== -->
+<div id="setup">
+  <div class="card">
+    <h2>① 选择先后手</h2>
+    <div class="seat-row">
+      <div class="seat-opt" id="optFirst" data-seat="0">
+        <div class="t">🙋 我先手</div>
+        <div class="d">你执玩家 1（先手），AI 执玩家 2（后手）。先手先行动。</div>
+      </div>
+      <div class="seat-opt" id="optSecond" data-seat="1">
+        <div class="t">🤖 AI 先手</div>
+        <div class="d">你执玩家 2（后手），AI 执玩家 1（先手）。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 本局地图（固定为地图 C）</h2>
+    <div class="mapbox">
+      <div class="mapgrid" id="mapPreview"></div>
+      <div class="maptip">
+        5 列，自下而上填充；列奖励分「填满即得」与「终局结算」两类：<br>
+        第 1 列 ▮▮▮ 📜 填满即获得藏宝图　第 2 列 ▮▮▮ 🟰 终局此列角色全同 +6<br>
+        第 3 列 ▮▮ 无奖励　第 4 列 ▮▮▮▮▮ 🔢 终局此列角色互不相同 +4<br>
+        第 5 列 ▮▮ 无奖励
+      </div>
+    </div>
+  </div>
+
+  <div class="row-actions">
+    <button class="btn" id="startBtn" disabled>开始对局</button>
+    <button class="btn ghost" id="rulesBtn">📖 游戏规则</button>
+    <span id="hint" style="font-size:.82rem;color:#9fb4c7">请先选择先后手</span>
+  </div>
+</div>
+
+<!-- ==================== 对局界面 ==================== -->
+<div id="game">
+  <div class="topbar">
+    <span class="stat">地图 <b>C</b> ｜ 外层回合 <b id="statTurn">1</b> ｜ 已完成列 <b id="statCols">你 0 / AI 0</b></span>
+    <span class="stat">藏宝图 <b id="statTreasure">无人持有</b></span>
+    <span class="stat">AI 推理 <b id="statInfer">—</b></span>
+  </div>
+
+  <div class="prompt-area" id="promptArea"></div>
+
+  <div class="boards">
+    <div class="player" id="player0">
+      <div class="player-header">
+        <span class="player-name" id="name0">玩家 1</span>
+        <span class="score" id="score0">0</span>
+        <span class="treasure" id="treasure0"></span>
+      </div>
+      <div class="reward-row" id="rewardRow0"></div>
+      <div class="map-grid" id="grid0"></div>
+    </div>
+    <div class="player" id="player1">
+      <div class="player-header">
+        <span class="player-name" id="name1">玩家 2</span>
+        <span class="score" id="score1">0</span>
+        <span class="treasure" id="treasure1"></span>
+      </div>
+      <div class="reward-row" id="rewardRow1"></div>
+      <div class="map-grid" id="grid1"></div>
+    </div>
+  </div>
+
+  <div class="logwrap">
+    <h3>对局记录（AI 的每一次决策都会在此列出，并至少停 1.2 秒）</h3>
+    <div id="log"></div>
+  </div>
+
+  <div class="footer">
+    <button class="btn ghost sm" id="rulesBtn2">📖 游戏规则</button>
+    <button class="btn ghost sm" id="restartBtn">重新开局</button>
+    <span class="tag">地图 C</span>
+    <span id="aiStats"></span>
+  </div>
+</div>
+
+<!-- ==================== 规则弹窗 ==================== -->
+<div class="overlay" id="rulesOverlay">
+  <div class="modal">
+    <header>
+      <h2>📖 《航海争夺》规则速览（地图 C）</h2>
+      <button class="x" id="rulesClose" title="关闭">✕</button>
+    </header>
+    <div class="body">
+      <h3>1. 目标与结束</h3>
+      <p>双方各有一块独立棋盘；轮流抽方块并放到自己的棋盘上。任意一位玩家<strong>填满 4 列</strong>时游戏进入结束流程（若完成者是先手玩家 1，则玩家 2 补一个完整回合），随后终局计分、判定胜负。</p>
+
+      <h3>2. 棋盘与地图 C</h3>
+      <p>棋盘是 5×5 网格，但只用到地图划出的 5 个竖直列（<strong>行 0 = 最下</strong>，列 0 = 最左）。方块总是落在该列<strong>最下面的空格</strong>。</p>
+      <table>
+        <tr><th>列</th><th>占用行</th><th>列奖励（填满即得 / 终局结算）</th></tr>
+        <tr><td>第 1 列</td><td>0, 1, 2（3 格）</td><td>📜 填满即获得藏宝图</td></tr>
+        <tr><td>第 2 列</td><td>0, 1, 2（3 格）</td><td>🟰 填满时无即时奖励；终局若此列角色全同 +6</td></tr>
+        <tr><td>第 3 列</td><td>0, 1（2 格）</td><td>无奖励</td></tr>
+        <tr><td>第 4 列</td><td>0, 1, 2, 3, 4（5 格）</td><td>🔢 填满时无即时奖励；终局若此列角色互不相同 +4</td></tr>
+        <tr><td>第 5 列</td><td>0, 1（2 格）</td><td>无奖励</td></tr>
+      </table>
+      <p class="note">本页只提供地图 C。第 2 / 第 4 列是<strong>终局结算型</strong>：把这两列填满时<strong>不会</strong>立即给分（这是设计如此，不是漏写）；只有当该列<strong>已完成</strong>（占满它的全部行）时，才在终局计分里按此列所有角色是否「全同 / 互不相同」一次性加分。第 1 列填满即获得藏宝图，第 3 / 第 5 列没有任何奖励。整副牌堆 72 块 = 9 种角色的所有两两组合（36 对）× 2 份，每块的两面不同、开局随机决定哪面朝上。</p>
+
+      <h3>3. 一个回合</h3>
+      <ul>
+        <li><strong>抽牌</strong>：你只看到方块<strong>朝上</strong>的一面，另一面不可见。</li>
+        <li><strong>翻面决策</strong>：二选一 —— 「保持朝上面放置」或者「翻面」。<strong>翻面不可逆</strong>，翻面后必须用新的这一面放置。</li>
+        <li><strong>放置</strong>：点击任意一个高亮的列，方块落在该列最下面的空格。若没有任何可放置的列（该玩家 5 列全满），方块被弃掉，回合直接结束。</li>
+        <li><strong>结算</strong>：立即结算方块的<strong>角色效果</strong>；若这一手填满了该列且此前未完成过，该列标记为已完成并结算该列<strong>列奖励</strong>（注意：地图 C 第 2 / 第 4 列的终局型奖励在填满时<strong>不结算</strong>，留到终局计分）。</li>
+      </ul>
+
+      <h3>4. 角色效果（按放置时朝上的一面结算）</h3>
+      <table>
+        <tr><th>角色</th><th>效果</th></tr>
+        <tr><td>👨‍🍳 厨师</td><td>+（该方块所在<strong>整行</strong>上已放置的方块数，含自身）</td></tr>
+        <tr><td>🦜 鹦鹉</td><td>立刻再行动<strong>一整个回合</strong>（可递归连锁）；终局每块 −1 分</td></tr>
+        <tr><td>🗺️ 制图师</td><td>获得 📜 藏宝图（可从对方手中夺走）</td></tr>
+        <tr><td>🧭 领航员</td><td>+2 ×（自己棋盘上朝上为制图师的方块数）</td></tr>
+        <tr><td>💣 炮手</td><td>立即 +5 分；终局若自己棋盘上炮手 ≥3，<strong>判负且分数记 0</strong></td></tr>
+        <tr><td>🐒 猴子</td><td>+1 分；然后<strong>必须</strong>选择上下左右四邻中一个已有方块将其翻面，并结算其新面的角色效果（可连锁）</td></tr>
+        <tr><td>🚩 瞭望员</td><td>放置时无效果（终局 +4）</td></tr>
+        <tr><td>🪚 木匠</td><td>放置时无效果（终局 +3）</td></tr>
+        <tr><td>⚓ 水手</td><td>放置时无效果（终局按水手列数计分）</td></tr>
+      </table>
+
+      <h3>5. 藏宝图</h3>
+      <ul>
+        <li>全局唯一，可被夺走。</li>
+        <li>一名玩家完成一个<strong>外层回合</strong>后，若他正是持有者，立即 +1 分（鹦鹉/额外回合产生的嵌套回合不额外 +1）。</li>
+        <li>比分相同时，藏宝图持有者获胜。</li>
+      </ul>
+
+      <h3>6. 终局计分（先计分，再判胜负；分数永不低于 0）</h3>
+      <ul>
+        <li>🚩 <strong>瞭望员</strong>：每块位于所在列<strong>最顶端</strong>的瞭望员 +4 分。</li>
+        <li>🪚 <strong>木匠</strong>：每块<strong>同行与同列都没有炮手</strong>的木匠 +3 分。</li>
+        <li>🦜 <strong>鹦鹉</strong>：每块 −1 分。</li>
+        <li>⚓ <strong>水手</strong>：设有水手的列数为 K，则 +K² 分。</li>
+        <li>🟰 <strong>第 2 列（终局型）</strong>：若此列<strong>已完成</strong>且此列所有角色<strong>相同</strong>，+6 分。</li>
+        <li>🔢 <strong>第 4 列（终局型）</strong>：若此列<strong>已完成</strong>且此列角色<strong>互不相同</strong>，+4 分。</li>
+      </ul>
+
+      <h3>7. 胜负判定（顺序固定）</h3>
+      <ul>
+        <li>先看炮手：一方炮手 ≥3 → 该方<strong>判负且分数记 0</strong>；双方都 ≥3 → 平局且双方记 0。</li>
+        <li>否则比分数，高者获胜。</li>
+        <li>分数相同 → 藏宝图持有者获胜；均无持有 → 平局。</li>
+      </ul>
+
+      <h3>8. 关于本页的 AI</h3>
+      <p>AI 是项目里训练出的策略网络（2 层 256 宽 ReLU 主干 + 4 个决策头），权重以 <span class="tag">per-group 对称 8bit 量化</span> 内联在 <code>weights.js</code> 中，页面加载时反量化为 fp32 后本地推理（因此断网也能玩）。AI 只看公共信息（双方棋盘、分数、藏宝图归属、自己抽到的朝上面），并额外维护一份「牌堆剩余各类配对」的均值场后验来估计翻面风险。</p>
+      <p class="note">每个 AI 决策点都会把决策内容展示出来并至少停 1.2 秒；若某次推理本身耗时超过 1.2 秒，则不再额外等待。</p>
+    </div>
+  </div>
+</div>
+
+<script charset="utf-8" src="game.js"></script>
+<script charset="utf-8" src="weights.js"></script>
+<script charset="utf-8" src="ai.js"></script>
+<script>
+(function () {
+  'use strict';
+  var CFS = window.CFS;
+  var ROLE_KEYS = CFS.ROLE_KEYS, ROLES = CFS.ROLES, MAP = CFS.MAP_C;
+  var PHASE_FLIP = CFS.PHASE_FLIP, PHASE_COL = CFS.PHASE_COL, PHASE_MONKEY = CFS.PHASE_MONKEY;
+
+  // ---------------------------------------------------------------- 状态
+  window.__CFS_DEBUG = { aiDecisions: [] };   // 自检钩子：记录每次 AI 决策的推理/暂停耗时
+  var aiSeat = 1, humanSeat = 0;
+  var game = null, belief = null, driver = null, policy = null;
+  var pendingResolve = null;     // 人类点击的 resolver（{run, fn}）
+  var runId = 0;                 // 每次开局 +1：旧对局的异步循环靠它自动退出
+  var inferStats = [];
+  var events = [];               // 引擎事件缓冲
+
+  var $ = function (id) { return document.getElementById(id); };
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  var now = function () { return (window.performance && performance.now) ? performance.now() : Date.now(); };
+
+  function roleName(r) { return ROLES[ROLE_KEYS[r]].name; }
+  function roleEmoji(r) { return ROLES[ROLE_KEYS[r]].emoji; }
+  function who(p) { return p === humanSeat ? '你' : 'AI'; }
+  function whoPanel(p) { return p === 0 ? '玩家 1' : '玩家 2'; }
+  function colName(c) { return '第 ' + (c + 1) + ' 列'; }
+
+  // ---------------------------------------------------------------- 地图预览
+  (function renderMapPreview() {
+    var el = $('mapPreview'), r, c;
+    for (r = 4; r >= 0; r--) {
+      for (c = 0; c < 5; c++) {
+        var d = document.createElement('div');
+        if (MAP.columns[c].rows.indexOf(r) < 0) d.className = 'off';
+        el.appendChild(d);
+      }
+    }
+  })();
+
+  // ---------------------------------------------------------------- 规则弹窗
+  function openRules() { $('rulesOverlay').classList.add('show'); }
+  function closeRules() { $('rulesOverlay').classList.remove('show'); }
+  $('rulesBtn').addEventListener('click', openRules);
+  $('rulesBtn2').addEventListener('click', openRules);
+  $('rulesClose').addEventListener('click', closeRules);
+  $('rulesOverlay').addEventListener('click', function (e) { if (e.target === $('rulesOverlay')) closeRules(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeRules(); });
+
+  // ---------------------------------------------------------------- 日志
+  function addLog(who, text, cls) {
+    var wrap = $('log');
+    var atBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 40;
+    var e = document.createElement('div');
+    e.className = 'e' + (who ? ' ' + who : '') + (cls ? ' ' + cls : '');
+    var w = document.createElement('span');
+    w.className = 'who';
+    w.textContent = who === 'you' ? '你' : who === 'ai' ? 'AI' : '';
+    var t = document.createElement('span');
+    t.className = 'txt';
+    t.innerHTML = text;
+    e.appendChild(w); e.appendChild(t);
+    wrap.appendChild(e);
+    while (wrap.childNodes.length > 400) wrap.removeChild(wrap.firstChild);
+    if (atBottom) wrap.scrollTop = wrap.scrollHeight;
+  }
+
+  var WHY = {
+    chef: '厨师', navigator: '领航员', gunner: '炮手', monkey: '猴子',
+    treasure: '藏宝图 +1', column: '列奖励', lookout: '瞭望员', carpenter: '木匠',
+    parrotEnd: '鹦鹉', end_if_same: '终局·此列角色全同', end_if_all_distinct: '终局·此列角色互不相同'
+  };
+
+  /**
+   * 把引擎事件缓冲写进对局记录。
+   *
+   * ⚠️ 归属必须按**事件自带的玩家**（`ev.p`）来定，不能用"刚刚是谁在行动"：
+   * 一次 `game.step()` 在结束当前回合后仍会继续推进到**下一位玩家的第一个决策点**，
+   * 期间的 `draw`（下家抽牌）以及终局时双方各自的计分事件都出现在同一批事件里。
+   * 早期版本按"行动方"整批打标签，于是把下家的抽牌记成了上家的
+   * （表现就是"你抽到…"其实是 AI 抽的，"AI 抽到…"其实是你抽的）。
+   */
+  function flushEvents() {
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      var who = (ev.p === undefined || ev.p === null) ? '' : (ev.p === humanSeat ? 'you' : 'ai');
+      var txt = null, cls = '';
+      if (ev.k === 'draw') txt = '抽到 <b>' + roleEmoji(ev.role) + ' ' + roleName(ev.role) + '</b>';
+      else if (ev.k === 'flip') txt = '翻面：' + roleEmoji(ev.from) + ' ' + roleName(ev.from) + ' → <b>' + roleEmoji(ev.to) + ' ' + roleName(ev.to) + '</b>';
+      else if (ev.k === 'place') txt = '落在 ' + colName(ev.col) + ' 第 ' + (ev.row + 1) + ' 行（' + roleEmoji(ev.role) + ' ' + roleName(ev.role) + '）';
+      else if (ev.k === 'discard') txt = '没有任何可放置的列，弃掉 ' + roleEmoji(ev.role) + ' ' + roleName(ev.role);
+      else if (ev.k === 'parrot') { txt = '🦜 <b>鹦鹉触发额外回合</b>'; cls = 'big'; }
+      else if (ev.k === 'treasure') txt = '📜 <b>获得藏宝图</b>' + (ev.why === 'column' ? '（' + colName(ev.col) + ' 列奖励）' : '（制图师）');
+      else if (ev.k === 'score') txt = (ev.delta >= 0 ? '+' : '') + ev.delta + ' 分（' + (WHY[ev.why] || ev.why) + '）' + (ev.n !== undefined ? ' ×' + ev.n : '');
+      else if (ev.k === 'colDone') { txt = '✅ <b>' + colName(ev.col) + ' 完成</b>'; cls = 'big'; }
+      else if (ev.k === 'monkeyFlip') txt = '🐒 翻面 (行' + (ev.row + 1) + ', 列' + (ev.col + 1) + ')：' + roleEmoji(ev.from) + ' → <b>' + roleEmoji(ev.to) + ' ' + roleName(ev.to) + '</b>';
+      else if (ev.k === 'boom') { txt = '💥 炮手达到 3 个，判负且分数记 0'; cls = 'warn'; }
+      else if (ev.k === 'end') txt = '🏁 对局结束';
+      if (txt) addLog(who, txt, cls);
+    }
+    events = [];
+  }
+
+  // ---------------------------------------------------------------- 渲染
+  function render() {
+    var view = game.publicView();
+    for (var p = 0; p < 2; p++) {
+      var gridEl = $('grid' + p);
+      gridEl.innerHTML = '';
+      for (var r = 4; r >= 0; r--) {
+        for (var c = 0; c < 5; c++) {
+          var cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.row = r; cell.dataset.col = c; cell.dataset.player = p;
+          var role = view.boards[p][r][c];
+          if (role >= 0) {
+            cell.classList.add('filled');
+            cell.textContent = roleEmoji(role);
+            cell.title = roleName(role);
+            if (view.finishedCols[p][c]) cell.classList.add('col-done');
+          } else if (MAP.columns[c].rows.indexOf(r) < 0) {
+            cell.classList.add('hidden-cell');
+          }
+          gridEl.appendChild(cell);
+        }
+      }
+      $('score' + p).textContent = view.scores[p];
+      $('treasure' + p).textContent = (view.treasureOwner === p) ? '📜' : '';
+      var rr = $('rewardRow' + p);
+      if (!rr.childNodes.length) {
+        for (var c2 = 0; c2 < 5; c2++) {
+          var icon = document.createElement('div');
+          icon.className = 'reward-icon';
+          var rw = MAP.columns[c2].reward;
+          icon.textContent = !rw ? '·' : (rw.type === 'treasure' ? '📜'
+            : (rw.type === 'end_if_same' ? '🟰' : (rw.type === 'end_if_all_distinct' ? '🔢' : '💰')));
+          icon.title = columnTitle(c2);
+          rr.appendChild(icon);
+        }
+      }
+      $('player' + p).classList.toggle('active', !game.done && view.acting === p);
+    }
+    $('statTurn').textContent = view.outerTurn;
+    var f0 = countTrue(view.finishedCols[humanSeat]), f1 = countTrue(view.finishedCols[aiSeat]);
+    $('statCols').textContent = '你 ' + f0 + ' / AI ' + f1;
+    $('statTreasure').textContent = view.treasureOwner === null ? '无人持有'
+      : (view.treasureOwner === humanSeat ? '你' : 'AI');
+  }
+  function countTrue(a) { var n = 0; for (var i = 0; i < a.length; i++) if (a[i]) n++; return n; }
+  function columnTitle(c) {
+    var rw = MAP.columns[c].reward;
+    var base = colName(c) + '（' + MAP.columns[c].rows.length + ' 格）';
+    if (!rw) return base + '：无奖励';
+    if (rw.type === 'treasure') return base + '：填满即获得藏宝图';
+    if (rw.type === 'end_if_same') {
+      return base + '：填满时无奖励；终局若此列角色全同 +' + rw.score + ' 分';
+    }
+    if (rw.type === 'end_if_all_distinct') {
+      return base + '：填满时无奖励；终局若此列角色互不相同 +' + rw.score + ' 分';
+    }
+    if (rw.type === 'first_complete') {
+      return base + '：填满后先完成者 +' + rw.first + ' 分 / 后完成者 +' + rw.second + ' 分';
+    }
+    return base + '：填满 +' + rw.amount + ' 分';
+  }
+
+  function setPrompt(html) { $('promptArea').innerHTML = html; }
+
+  function clearHighlights() {
+    var els = document.querySelectorAll('.cell.placeable, .cell.selectable');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('placeable', 'selectable');
+  }
+
+  // ---------------------------------------------------------------- 人类输入
+  function highlightColumns(seat, cols) {
+    var cells = document.querySelectorAll('#player' + seat + ' .cell');
+    for (var i = 0; i < cells.length; i++) {
+      var el = cells[i];
+      var c = parseInt(el.dataset.col, 10);
+      if (cols.indexOf(c) < 0) continue;
+      if (el.classList.contains('filled')) continue;
+      el.classList.add('placeable');
+    }
+  }
+  function highlightCells(seat, coords) {
+    for (var i = 0; i < coords.length; i++) {
+      var el = document.querySelector('#player' + seat + ' .cell[data-row="' + coords[i][0] + '"][data-col="' + coords[i][1] + '"]');
+      if (el) el.classList.add('selectable');
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    var target = e.target.closest ? e.target.closest('.cell') : null;
+    if (!target || !pendingResolve || pendingResolve.run !== runId) return;
+    if (!target.classList.contains('selectable') && !target.classList.contains('placeable')) return;
+    var row = parseInt(target.dataset.row, 10), col = parseInt(target.dataset.col, 10);
+    var p = parseInt(target.dataset.player, 10);
+    var pr = pendingResolve;
+    pendingResolve = null;
+    clearHighlights();
+    pr.fn({ row: row, col: col, player: p });
+  });
+
+  function waitForClick(myRun, seat, coords, cols) {
+    return new Promise(function (resolve) {
+      if (myRun !== runId) return resolve(null);
+      pendingResolve = { run: myRun, fn: resolve };
+      if (coords) highlightCells(seat, coords);
+      if (cols) highlightColumns(seat, cols);
+    });
+  }
+
+  /** 人类在 flip 决策点：返回 0（保持）/ 1 已就地执行（翻面） */
+  async function humanFlip(myRun, view) {
+    var role = view.tileRole;
+    setPrompt('<div class="tile-line">你抽到方块：<span class="tile-emoji">' + roleEmoji(role) + '</span> <b>' + roleName(role) + '</b>　' +
+      '<span style="color:#9fb4c7;font-size:.8rem">（另一面不可见）</span></div>' +
+      '<div class="buttons">' +
+      '<button class="btn" id="btnKeep">保持朝上面放置（' + roleEmoji(role) + ' ' + roleName(role) + '）</button>' +
+      '<button class="btn ghost" id="btnFlip">翻面查看（不可逆）</button></div>');
+
+    var choice = await new Promise(function (resolve) {
+      $('btnKeep').onclick = function () { resolve(0); };
+      $('btnFlip').onclick = function () { resolve(1); };
+    });
+    if (myRun !== runId) return null;
+    if (choice === 0) return 0;
+
+    // 翻面：先让引擎翻面，把新的一面展示给玩家，再确认放置
+    var nxt = applyAction(1);
+    setPrompt('<div class="tile-line">翻面后为：<span class="tile-emoji">' + roleEmoji(nxt.tileRole) + '</span> <b>' + roleName(nxt.tileRole) + '</b></div>' +
+      '<div class="buttons"><button class="btn" id="btnPlace">放置此方块</button></div>');
+    await new Promise(function (resolve) { $('btnPlace').onclick = resolve; });
+    if (myRun !== runId) return null;
+    return undefined;                              // undefined = 已就地执行完毕
+  }
+
+  /** 人类在 col 决策点 */
+  async function humanCol(myRun, view) {
+    var cols = view.placeable;
+    setPrompt('<div class="tile-line">请选择要放入的列（点击高亮格）　当前方块：<span class="tile-emoji">' + roleEmoji(view.tileRole) + '</span> <b>' + roleName(view.tileRole) + '</b></div>' +
+      '<div style="font-size:.8rem;color:#9fb4c7">' + cols.map(function (c) { return columnTitle(c); }).join('　｜　') + '</div>');
+    var pick = await waitForClick(myRun, humanSeat, null, cols);
+    if (!pick || myRun !== runId) return null;
+    return pick.col;
+  }
+
+  /** 人类在 monkey 决策点 */
+  async function humanMonkey(myRun, view) {
+    var nbrs = view.monkeyNeighbors;
+    setPrompt('<div class="tile-line">🐒 猴子效果：请选择一个相邻方块将其翻面</div>');
+    var pick = await waitForClick(myRun, humanSeat, nbrs, null);
+    if (!pick || myRun !== runId) return null;
+    for (var i = 0; i < nbrs.length; i++) {
+      if (nbrs[i][0] === pick.row && nbrs[i][1] === pick.col) return i;
+    }
+    return 0;
+  }
+
+  // ---------------------------------------------------------------- AI 决策展示
+  function describeAi(phase, action, view, legal) {
+    if (phase === PHASE_FLIP) {
+      if (action === 1) return '决定 <b>翻面</b>（当前朝上是 ' + roleEmoji(view.tileRole) + ' ' + roleName(view.tileRole) + '）';
+      return '决定 <b>保持朝上面</b>：' + roleEmoji(view.tileRole) + ' ' + roleName(view.tileRole);
+    }
+    if (phase === PHASE_COL) {
+      var rw = MAP.columns[action].reward;
+      var extra = !rw ? '无列奖励'
+        : (rw.type === 'treasure' ? '列奖励：填满即获得藏宝图'
+          : (rw.type === 'end_if_same' ? '列奖励：终局此列角色全同 +' + rw.score + '（填满时不结算）'
+            : (rw.type === 'end_if_all_distinct' ? '列奖励：终局此列角色互不相同 +' + rw.score + '（填满时不结算）'
+              : '列奖励：+' + rw.amount + ' 分')));
+      return '放置到 <b>' + colName(action) + '</b>（' + extra + '；该列还有 ' + remaining(action, view) + ' 个空格）';
+    }
+    if (phase === PHASE_MONKEY) {
+      var n = view.monkeyNeighbors[action];
+      var role = view.boards[view.acting][n[0]][n[1]];
+      return '选择翻面相邻方块 <b>(行' + (n[0] + 1) + ', 列' + (n[1] + 1) + ')</b>：' + roleEmoji(role) + ' ' + roleName(role) + ' → 未知面';
+    }
+    return '动作 ' + action;
+  }
+  function remaining(col, view) {
+    var filled = 0, rows = MAP.columns[col].rows;
+    for (var i = 0; i < rows.length; i++) if (view.boards[view.acting][rows[i]][col] >= 0) filled++;
+    return rows.length - filled;
+  }
+
+  async function aiDecide(view, legal, phase) {
+    setPrompt('<div class="ai-line thinking">🤖 AI 正在决策</div>');
+    await sleep(60);                            // 让「思考中」先渲染出来
+    var t0 = now();
+    var action = policy.act(view, legal, phase, belief);
+    var inferMs = now() - t0;
+
+    var desc = describeAi(phase, action, view, legal);
+    var wait = Math.max(0, 1200 - inferMs);
+    inferStats.push(inferMs);
+    $('statInfer').textContent = inferMs.toFixed(1) + ' ms（均 ' +
+      (inferStats.reduce(function (a, b) { return a + b; }, 0) / inferStats.length).toFixed(1) + ' ms）';
+    $('aiStats').textContent = 'AI 已决策 ' + inferStats.length + ' 次，累计推理 ' +
+      (inferStats.reduce(function (a, b) { return a + b; }, 0) / 1000).toFixed(2) + ' 秒';
+
+    addLog('ai', '决策：' + desc + '　<span style="color:#7f97ab">（' + inferMs.toFixed(1) + ' ms）</span>');
+    setPrompt('<div class="ai-line">🤖 AI 决策：' + desc + '</div>' +
+      '<div class="ai-meta">网络推理 ' + inferMs.toFixed(1) + ' ms ｜ ' +
+      (wait > 0 ? '停 ' + Math.round(wait) + ' ms 供你查看' : '推理已超过 1.2 秒，不额外等待') + '</div>');
+    if (wait > 0) await sleep(wait);
+    // 自检钩子（供 verify/page_auto.js 断言「决策后至少停 1.2 秒」与日志归属）
+    if (window.__CFS_DEBUG) {
+      window.__CFS_DEBUG.aiDecisions.push({
+        inferMs: inferMs, wait: wait, totalMs: now() - t0, phase: phase, action: action
+      });
+    }
+    return action;
+  }
+
+  // ---------------------------------------------------------------- 引擎推进
+  function applyAction(action) {
+    var view = game.publicView();
+    var phase = view.phase;
+    var nxt = game.step(action)[0];
+    driver.onTransition(phase, view, action, nxt);
+    flushEvents();
+    render();
+    return nxt;
+  }
+
+  async function playGame(myRun) {
+    var view = game.publicView();
+    while (!game.done) {
+      if (myRun !== runId) return;
+      var legal = game.legalMask();
+      var phase = view.phase;
+      var action;
+      if (view.acting === humanSeat) {
+        if (phase === PHASE_FLIP) {
+          var r = await humanFlip(myRun, view);
+          if (myRun !== runId) return;
+          if (r === undefined) { view = game.publicView(); continue; }   // 翻面已就地执行
+          if (r === null) return;
+          action = r;
+        } else if (phase === PHASE_COL) {
+          action = await humanCol(myRun, view);
+          if (action === null || myRun !== runId) return;
+        } else if (phase === PHASE_MONKEY) {
+          action = await humanMonkey(myRun, view);
+          if (action === null || myRun !== runId) return;
+        } else {
+          action = legal[0];
+        }
+        setPrompt('<div style="color:#9fb4c7">结算中…</div>');
+        view = applyAction(action);
+      } else {
+        setPrompt('<div class="ai-line thinking">🤖 AI 的回合</div>');
+        render();
+        action = await aiDecide(view, legal, phase);
+        if (myRun !== runId) return;
+        view = applyAction(action);
+      }
+      if (myRun !== runId) return;
+      if (game.done) break;
+      view = game.publicView();
+    }
+    finish();
+  }
+
+  function finish() {
+    var d = game.digest();
+    var msg;
+    if (d.winner === 'draw') msg = '平局！';
+    else msg = (d.winner === 'p' + humanSeat) ? '🎉 你赢了！' : '🤖 AI 获胜';
+    addLog('', '🏁 <b>游戏结束</b>：' + msg + '　最终分数 你 ' + d.finalScores[humanSeat] + ' ｜ AI ' + d.finalScores[aiSeat], 'big');
+    clearHighlights();
+    setPrompt('<div style="font-size:1.15rem;font-weight:800">🏁 游戏结束 —— ' + msg + '</div>' +
+      '<div class="tile-line">最终分数：你 <b>' + d.finalScores[humanSeat] + '</b>　｜　AI <b>' + d.finalScores[aiSeat] + '</b></div>' +
+      '<div class="ai-meta">炮手数量：你 ' + d.gunners[humanSeat] + ' ｜ AI ' + d.gunners[aiSeat] +
+      '　｜　已完成列：你 ' + countTrue(d.finishedCols[humanSeat]) + ' ｜ AI ' + countTrue(d.finishedCols[aiSeat]) + '</div>' +
+      '<div class="buttons"><button class="btn" id="btnAgain">再来一局</button>' +
+      '<button class="btn ghost" id="btnSetup">重新选择先后手</button></div>');
+    $('btnAgain').onclick = function () { startGame(humanSeat); };
+    $('btnSetup').onclick = backToSetup;
+    render();
+  }
+
+  // ---------------------------------------------------------------- 开局 / 复位
+  function startGame(seat) {
+    humanSeat = seat; aiSeat = 1 - seat;
+    runId++;
+    events = []; inferStats = [];
+    window.__CFS_DEBUG.aiDecisions = [];
+    pendingResolve = null;
+    $('log').innerHTML = '';
+    $('setup').style.display = 'none';
+    $('game').style.display = 'flex';
+    $('name0').textContent = '玩家 1 · ' + (0 === humanSeat ? '你' : 'AI');
+    $('name1').textContent = '玩家 2 · ' + (1 === humanSeat ? '你' : 'AI');
+    $('player0').className = 'player ' + (0 === humanSeat ? 'you' : 'ai');
+    $('player1').className = 'player ' + (1 === humanSeat ? 'you' : 'ai');
+    $('rewardRow0').innerHTML = ''; $('rewardRow1').innerHTML = '';
+    $('statInfer').textContent = '—';
+    $('aiStats').textContent = '';
+
+    var seed = (Math.random() * 0x7fffffff) | 0;
+    game = new CFS.Game({ seed: seed, boomRule: CFS.BOOM_RULE_LOSE, onEvent: function (ev) { events.push(ev); } });
+    belief = new CFS.MeanFieldBelief();
+    driver = new CFS.BeliefDriver(belief);
+    if (!policy) policy = CFS_AI.load();
+    policy.stats = { forwards: 0, totalMs: 0, maxMs: 0 };
+    addLog('', '新对局开始 —— 随机种子 <b>' + seed + '</b>；你执 ' + whoPanel(humanSeat) +
+      '（' + (humanSeat === 0 ? '先手' : '后手') + '），AI 执 ' + whoPanel(aiSeat), 'sys');
+    render();
+    playGame(runId);
+  }
+
+  function backToSetup() {
+    runId++;                                     // 让上一局的异步循环立刻退出（不再操作共享状态）
+    if (pendingResolve) { var pr = pendingResolve; pendingResolve = null; pr.fn(null); }
+    clearHighlights();
+    $('game').style.display = 'none';
+    $('setup').style.display = 'flex';
+    $('promptArea').innerHTML = '';
+    $('startBtn').disabled = selectedSeat === null;
+    $('hint').textContent = selectedSeat === null ? '请先选择先后手' : '已选择，点击开始对局';
+  }
+
+  // ---------------------------------------------------------------- 开局界面交互
+  var selectedSeat = null;
+  Array.prototype.forEach.call(document.querySelectorAll('.seat-opt'), function (el) {
+    el.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.seat-opt'), function (o) { o.classList.remove('sel'); });
+      el.classList.add('sel');
+      selectedSeat = parseInt(el.dataset.seat, 10);
+      $('startBtn').disabled = false;
+      $('hint').textContent = selectedSeat === 0 ? '你执玩家 1（先手）' : '你执玩家 2（后手）';
+    });
+  });
+  $('startBtn').addEventListener('click', function () { if (selectedSeat !== null) startGame(selectedSeat); });
+  $('restartBtn').addEventListener('click', backToSetup);
+  $('optFirst').click();
+
+  // 权重加载自检
+  if (!window.CFS_MODEL) {
+    $('hint').innerHTML = '<span style="color:#ff9c9c">weights.js 未加载，AI 无法运行</span>';
+    $('startBtn').disabled = true;
+  }
+})();
+</script>
+</body>
+</html>
